@@ -1,18 +1,45 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLogin } from '../components/admin/AdminLogin';
 import { AdminDashboard } from '../components/admin/AdminDashboard';
-import { getCurrentAdminUser, signOutAdmin, AdminUser } from '../services/authService';
+import {
+  getCurrentAdminUser,
+  signOutAdmin,
+  AdminUser
+} from '../services/authService';
 
 export const AdminPage: React.FC = () => {
-  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [adminUser, setAdminUser] =
+    useState<AdminUser | null>(null);
+
+  const [checkingAuth, setCheckingAuth] =
+    useState(true);
 
   useEffect(() => {
-    const existing = getCurrentAdminUser();
-    if (existing) {
-      setAdminUser(existing);
+    let active = true;
+
+    async function checkAuth() {
+      try {
+        const existing = await getCurrentAdminUser();
+
+        if (active) {
+          setAdminUser(existing);
+        }
+      } catch {
+        if (active) {
+          setAdminUser(null);
+        }
+      } finally {
+        if (active) {
+          setCheckingAuth(false);
+        }
+      }
     }
-    setCheckingAuth(false);
+
+    checkAuth();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleLoginSuccess = (user: AdminUser) => {
@@ -20,8 +47,11 @@ export const AdminPage: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    await signOutAdmin();
-    setAdminUser(null);
+    try {
+      await signOutAdmin();
+    } finally {
+      setAdminUser(null);
+    }
   };
 
   if (checkingAuth) {
@@ -41,6 +71,9 @@ export const AdminPage: React.FC = () => {
   }
 
   return (
-    <AdminDashboard user={adminUser} onLogout={handleLogout} />
+    <AdminDashboard
+      user={adminUser}
+      onLogout={handleLogout}
+    />
   );
 };

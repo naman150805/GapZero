@@ -1,7 +1,6 @@
-import { signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, User } from 'firebase/auth';
-import { auth, isFirebaseConfigured } from '../config/firebase';
+import { supabase } from '../config/supabase';
 
-const ADMIN_STORAGE_KEY = 'gapzero_admin_session';
+const ADMIN_UID = '9f30a653-faac-45a7-863e-32f3c94d8173';
 
 export interface AdminUser {
   email: string;
@@ -9,73 +8,78 @@ export interface AdminUser {
   name: string;
 }
 
-// Default secure master credentials for local admin preview/management
-export const DEMO_ADMIN_CREDENTIALS = {
-  email: 'admin@gapzero.in',
-  password: 'GapZeroAdmin2026!'
-};
+export async function signInAdmin(
+  email: string,
+  pass: string
+): Promise<{
+  success: boolean;
+  user?: AdminUser;
+  error?: string;
+}> {
+  try {
+    const { data, error } =
+      await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: pass
+      });
 
-/**
- * Sign in admin user
- */
-export async function signInAdmin(email: string, pass: string): Promise<{ success: boolean; user?: AdminUser; error?: string }> {
-  // Try Firebase Auth if configured
-  if (isFirebaseConfigured && auth) {
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, pass);
-      const adminUser: AdminUser = {
-        email: userCredential.user.email || email,
+    if (error || !data.user) {
+      return {
+        success: false,
+        error: 'Invalid administrator email or password.'
+      };
+    }
+
+    if (data.user.id !== ADMIN_UID) {
+      await supabase.auth.signOut({ scope: 'local' });
+
+      return {
+        success: false,
+        error: 'Unauthorized access.'
+      };
+    }
+
+    return {
+      success: true,
+      user: {
+        email: data.user.email || email,
         role: 'admin',
         name: 'GapZero Administrator'
-      };
-      sessionStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(adminUser));
-      return { success: true, user: adminUser };
-    } catch (err: unknown) {
-      const fbError = err as { code?: string; message?: string };
-      // If user not found in firebase or invalid creds
-      if (fbError.code === 'auth/user-not-found' || fbError.code === 'auth/wrong-password' || fbError.code === 'auth/invalid-credential') {
-        return { success: false, error: 'Invalid administrator email or password.' };
       }
-      console.warn('Firebase auth attempt returned:', fbError.message);
-    }
+    };
+  } catch {
+    return {
+      success: false,
+      error: 'Authentication failed. Please try again.'
+    };
   }
+}
 
-  // Admin authentication validation
-  if (email.trim().toLowerCase() === DEMO_ADMIN_CREDENTIALS.email.toLowerCase() && pass === DEMO_ADMIN_CREDENTIALS.password) {
-    const adminUser: AdminUser = {
-      email: DEMO_ADMIN_CREDENTIALS.email,
+export async function signOutAdmin(): Promise<void> {
+  sessionStorage.removeItem('gapzero_admin_session');
+
+  await supabase.auth.signOut({ scope: 'local' });
+}
+
+export async function getCurrentAdminUser():
+  Promise<AdminUser | null> {
+  try {
+    const { data, error } =
+      await supabase.auth.getUser();
+
+    if (
+      error ||
+      !data.user ||
+      data.user.id !== ADMIN_UID
+    ) {
+      return null;
+    }
+
+    return {
+      email: data.user.email || '',
       role: 'admin',
       name: 'GapZero Administrator'
     };
-    sessionStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(adminUser));
-    return { success: true, user: adminUser };
-  }
-
-  return { success: false, error: 'Invalid administrator email or password.' };
-}
-
-/**
- * Sign out admin user
- */
-export async function signOutAdmin(): Promise<void> {
-  if (isFirebaseConfigured && auth) {
-    try {
-      await fbSignOut(auth);
-    } catch (e) {
-      console.error('Firebase signout error:', e);
-    }
-  }
-  sessionStorage.removeItem(ADMIN_STORAGE_KEY);
-}
-
-/**
- * Get current admin session
- */
-export function getCurrentAdminUser(): AdminUser | null {
-  try {
-    const raw = sessionStorage.getItem(ADMIN_STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
   } catch {
     return null;
   }
