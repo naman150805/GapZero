@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Students can submit their counselling registration without creating an account
+    // Public write is allowed ONLY for creating new registration documents with validated fields
+    match /counselling_registrations/{registrationId} {
+      allow create: if request.resource.data.fullName is string
+                    && request.resource.data.mobileNumber is string
+                    && request.resource.data.email is string
+                    && request.resource.data.guardianConsent == true
+                    && request.resource.data.termsAccepted == true;
+                    
+      // Strictly restrict read, update, and delete to authenticated administrators only
+      allow read, update, delete: if request.auth != null && request.auth.token.email.matches(".*@gapzero\\.in$");
+    }
+    
+    // Default deny for all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
